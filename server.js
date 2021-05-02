@@ -46,6 +46,11 @@ io.on('connection', socket => {
         peer.addTransceiver("audio", { direction: "sendrecv" });
         peer.addTransceiver("video", { direction: "sendrecv" });
 
+        let existingStreams = streams.get(roomID);
+        for (let obj of existingStreams) {
+          peer.addStream(obj.stream);
+        }
+
         // A new audio/video stream has arrived from the remote peer (should only happen once per connection)
         peer.on('stream', stream => {
 
@@ -114,10 +119,10 @@ io.on('connection', socket => {
 });
 
 if (process.env.PROD) {
-    app.use(express.static(path.join(__dirname, './client/build')))
+    app.use(express.static(path.join(__dirname, './client/build')));
     app.get('*', (req, res) => {
         res.sendFile(path.join(__dirname, './client/build/index.html'))
-    })
+    });
 }
 
 server.listen(process.env.PORT || 8000, () => console.log('server is running on port 8000'));
