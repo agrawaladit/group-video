@@ -3,7 +3,7 @@ import io from "socket.io-client";
 import Peer from "simple-peer";
 import styled from "styled-components";
 import {useParams} from "react-router";
-import {Box, ButtonBase, Grid, makeStyles, Menu, MenuItem} from "@material-ui/core";
+import {Box, Grid, makeStyles, Menu, MenuItem} from "@material-ui/core";
 import GameLovers from "./GameLovers/GameLovers";
 import AppBar from '@material-ui/core/AppBar';
 import Toolbar from '@material-ui/core/Toolbar';
@@ -17,18 +17,20 @@ import ChatRoom from "./ChatRoom";
 
 const Video = (props) => {
     const ref = useRef();
+    ref.current.srcObject = props.stream;
 
+    /**
     useEffect(() => {
         props.peer.on("stream", stream => {
             ref.current.srcObject = stream;
         })
     }, []);
+    */
 
     return (
         <StyledVideo playsInline autoPlay ref={ref} />
     );
 }
-
 
 const videoConstraints = {
     "width": 640,
@@ -73,15 +75,39 @@ const Room = (props) => {
     const classes = useStyles();
     const socketRef = useRef();
     const userVideo = useRef();
-    const peersRef = useRef([]);
+    // const peersRef = useRef([]);
     const { id } = useParams();
     const roomID = id;
 
     useEffect(() => {
         socketRef.current = io.connect("/");
         navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true }).then(stream => {
+
             userVideo.current.srcObject = stream;
+
             socketRef.current.emit("join room", roomID);
+
+            const peer = new Peer({
+                initiator: false,
+                trickle: false,
+                stream,
+            });
+
+            peer.on('stream', stream => {
+              peers.push(stream);
+              setPeers(peers);
+            });
+
+            socketRef.current.on("sending signal", signal => {
+              peer.signal(signal);
+            });
+
+            socketRef.current.on("user left", leavingStream => {
+              peers = peers.filter( stream => stream.id !== leavingStream.id );
+              setPeers(peers);
+            });
+
+            /**
             socketRef.current.on("all users", users => {
                 const peers = [];
                 users.forEach(userID => {
@@ -96,7 +122,7 @@ const Room = (props) => {
                     });
                 })
                 setPeers(peers);
-            })
+            });
 
             socketRef.current.on("user joined", payload => {
                 const peer = addPeer(payload.signal, payload.callerID, stream);
@@ -126,10 +152,12 @@ const Room = (props) => {
                 const peers = peersRef.current.filter(p => p.peerID !== id);
                 peersRef.current = peers;
                 setPeers(peers);
-            })
-        })
+            });
+            */
+        });
     }, []);
 
+    /**
     function createPeer(userToSignal, callerID, stream) {
         const peer = new Peer({
             initiator: true,
@@ -159,6 +187,7 @@ const Room = (props) => {
 
         return peer;
     }
+    */
 
     const isMenuOpen = Boolean(anchorEl);
 
@@ -235,9 +264,9 @@ const Room = (props) => {
               </Grid>
               <Grid item xs={2} container direction={"column"} className={classes.centerAlign}>
                   <StyledVideo muted ref={userVideo} autoPlay playsInline />
-                  {peers.map((peer) => {
+                  {peers.map((stream) => {
                       return (
-                        <Video key={peer.peerID} peer={peer.peer} />
+                        <Video key={stream.id} stream={stream} />
                       );
                   })}
               </Grid>
@@ -257,7 +286,6 @@ const Room = (props) => {
                       )
                   }
               </Grid>
-              <ChatRoom/>
           </Grid>
       </div>
     );

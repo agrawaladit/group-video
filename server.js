@@ -1,30 +1,73 @@
 require('dotenv').config();
 const express = require("express");
 const http = require("http");
+const socket = require("socket.io");
+const path = require("path");
+const wrtc = require('wrtc');
+const Peer = require("simple-peer");
+
 const app = express();
 const server = http.createServer(app);
-const socket = require("socket.io");
 const io = socket(server);
-const path = require("path");
+
 let roomIDLocal = "";
 
-const users = {};
+// map of RoomID -> { id: socketId, peer: Peer }
+let users = new Map();
 
-const socketToRoom = {};
+// map of RoomID -> { id: socketId, stream: MediaStream }
+let streams = new Map();
+
+// map of socketId -> roomID
+const socketToRoom = new Map();
 const NEW_CHAT_MESSAGE_EVENT = "newChatMessage";
 
 io.on('connection', socket => {
     socket.on("join room", roomID => {
-        roomIDLocal = roomID
-        if (users[roomID]) {
-            users[roomID].push(socket.id);
-        } else {
-            users[roomID] = [socket.id];
-        }
-        socketToRoom[socket.id] = roomID;
-        const usersInThisRoom = users[roomID].filter(id => id !== socket.id);
 
-        socket.emit("all users", usersInThisRoom);
+        roomIDLocal = roomID;
+
+        if (!users.has(roomID)) {
+            users.set(roomID, []);
+            streams.set(roomID, []);
+        }
+
+        const peer = new Peer({
+          initiator: true,
+          trickle: false,
+          wrtc: wrtc,
+        });
+
+        // sending an offer
+        peer.on('signal', signal => {
+          socket.emit("sending signal", signal);
+        });
+
+        peer.addTransceiver("audio", { direction: "sendrecv" });
+        peer.addTransceiver("video", { direction: "sendrecv" });
+
+        // A new audio/video stream has arrived from the remote peer (should only happen once per connection)
+        peer.on('stream', stream => {
+
+          // add this stream to the array of existing streams, any new players get initialized with this array of streams
+          streams.get(roomID).push({ id: socket.id, stream: stream });
+
+          // notify all current players of a new stream
+          const usersInThisRoom = users.get(roomID).filter(obj => obj.id !== socket.id);
+          for (let obj of usersInThisRoom) {
+            obj.peer.addStream(stream);
+          }
+        });
+
+        peer.on('error', (err) => { console.error(err); } );
+
+        // a returning answer
+        socket.on('returning signal', signal => {
+          peer.signal(signal);
+        });
+
+        users.get(roomID).push({ id: socket.id, peer: peer });
+        socketToRoom.set(socket.id, roomID);
     });
 
     // Join a conversation
@@ -36,6 +79,7 @@ io.on('connection', socket => {
         io.in(roomIDLocal).emit(NEW_CHAT_MESSAGE_EVENT, data);
     });
 
+    /**
     socket.on("sending signal", payload => {
         io.to(payload.userToSignal).emit('user joined', { signal: payload.signal, callerID: payload.callerID });
     });
@@ -43,17 +87,30 @@ io.on('connection', socket => {
     socket.on("returning signal", payload => {
         io.to(payload.callerID).emit('receiving returned signal', { signal: payload.signal, id: socket.id });
     });
+    */
 
+    // remove traces of this player
     socket.on('disconnect', () => {
-        const roomID = socketToRoom[socket.id];
-        let room = users[roomID];
-        if (room) {
-            room = room.filter(id => id !== socket.id);
-            users[roomID] = room;
-            socket.broadcast.emit('user left', socket.id)
+
+        const roomID = socketToRoom.get(socket.id);
+
+        if (roomID && users.has(roomID)) {
+
+            let peerConns = users.get(roomID);
+            let peerStreams = streams.get(roomID);
+
+            peerConns = peerConns.filter(conn => conn.id !== socket.id);
+            peerStreams = peerStreams.filter(s => s.id !== socket.id);
+
+            let currStream = peerStreams.find(s => s.id === socket.id);
+            peerConns.forEach(conn => conn.peer.removeStream(currStream) );
+
+            users.set(roomID, peerConns);
+            streams.set(roomID, peerStreams);
+
+            io.to(roomID).emit('user left', currStream);
         }
     });
-
 });
 
 if (process.env.PROD) {
@@ -64,5 +121,3 @@ if (process.env.PROD) {
 }
 
 server.listen(process.env.PORT || 8000, () => console.log('server is running on port 8000'));
-
-
