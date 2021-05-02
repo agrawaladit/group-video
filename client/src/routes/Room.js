@@ -231,7 +231,7 @@ const Room = (props) => {
       </Menu>
     );
 
-    console.log(peers)
+    console.log(peers);
 
     return (
       <div style={{height: "100vh"}}>
