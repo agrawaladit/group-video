@@ -31,7 +31,7 @@ const Video = (props) => {
     */
 
     return (
-        <StyledVideo playsInline autoPlay ref={ref} />
+        <StyledVideo playsInline autoPlay muted ref={ref} />
     );
 }
 
@@ -71,6 +71,7 @@ const Room = (props) => {
     const [anchorEl, setAnchorEl] = React.useState(null);
     const [game, updateGame] = React.useState("SpaceTime");
     const classes = useStyles();
+    const peerRef = useRef(null);
     const socketRef = useRef();
     const userVideo = useRef();
     const streamsRef = useRef([]);
@@ -81,18 +82,22 @@ const Room = (props) => {
         socketRef.current = io.connect("/");
 
         const videoConstraints = { "width": 600, "height": 450 };
-        // navigator.mediaDevices.getUserMedia({ audio: true }).then(localStream => {
-        navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true }).then(stream => {
+        let mediaPromise = navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true }).catch(err => {
+          return null;
+        });
+        mediaPromise.then(localStream => {
 
-            userVideo.current.srcObject = localStream;
+            if (localStream) {
+              userVideo.current.srcObject = localStream;
+            }
 
             socketRef.current.emit("join room", roomID);
 
-            const peer = new Peer({
+            const peer = localStream ? new Peer({
                 initiator: false,
                 trickle: false,
                 stream: localStream,
-            });
+            }) : new Peer({initiator: false, trickle: false, });
 
             peer.on('signal', signal => {
               socketRef.current.emit('returning signal', signal);
@@ -120,6 +125,7 @@ const Room = (props) => {
               setStreams(updatedStreams);
             });
 
+            peerRef.current = peer;
             /**
             socketRef.current.on("all users", users => {
                 const peers = [];
@@ -168,6 +174,17 @@ const Room = (props) => {
             });
             */
         });
+
+      return function cleanup() {
+        if (peerRef.current) {
+          peerRef.current.destroy();
+          peerRef.current = null;
+        }
+        if (socketRef.current) {
+          socketRef.current.disconnect();
+          socketRef.current = null;
+        }
+      }
     }, []);
 
     /**

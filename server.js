@@ -111,11 +111,6 @@ io.on('connection', socket => {
             let updatedUsers = currentUsers.filter(conn => conn.id !== socket.id);
             let updatedStreams = currentStreams.filter(s => s.id !== socket.id);
 
-            let leavingUser = currentUsers.find(conn => conn.id === socket.id);
-            if (leavingUser) {
-              leavingUser.peer.destroy();
-            }
-
             let leavingStream = currentStreams.find(s => s.id === socket.id);
             if (leavingStream) {
               console.log(leavingStream.stream.id);
