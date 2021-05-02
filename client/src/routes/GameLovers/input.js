@@ -1,4 +1,3 @@
-"use strict";
 const pb = require('./proto/input_pb');
 
 var InputMap = new Map([

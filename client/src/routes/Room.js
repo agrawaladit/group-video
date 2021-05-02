@@ -13,11 +13,14 @@ import VideocamIcon from '@material-ui/icons/Videocam';
 import VideocamOffIcon from '@material-ui/icons/VideocamOff';
 import MicIcon from '@material-ui/icons/Mic';
 import MicOffIcon from '@material-ui/icons/MicOff';
-import ChatRoom from "./ChatRoom";
+// import ChatRoom from "./ChatRoom";
 
 const Video = (props) => {
     const ref = useRef();
-    ref.current.srcObject = props.stream;
+
+    useEffect(() => {
+      ref.current.srcObject = props.stream;
+    }, []);
 
     /**
     useEffect(() => {
@@ -31,11 +34,6 @@ const Video = (props) => {
         <StyledVideo playsInline autoPlay ref={ref} />
     );
 }
-
-const videoConstraints = {
-    "width": 640,
-    "height": 480
-};
 
 const StyledVideo = styled.video`
     width: 100%;
@@ -67,7 +65,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const Room = (props) => {
-    const [peers, setPeers] = useState([]);
+    const [streams, setStreams] = useState([]);
     const [mic, setMic] = useState(true);
     const [camera, setCamera] = useState(true);
     const [anchorEl, setAnchorEl] = React.useState(null);
@@ -75,40 +73,51 @@ const Room = (props) => {
     const classes = useStyles();
     const socketRef = useRef();
     const userVideo = useRef();
-    // const peersRef = useRef([]);
+    const streamsRef = useRef([]);
     const { id } = useParams();
     const roomID = id;
 
     useEffect(() => {
         socketRef.current = io.connect("/");
+
+        const videoConstraints = { "width": 600, "height": 450 };
+        // navigator.mediaDevices.getUserMedia({ audio: true }).then(localStream => {
         navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true }).then(stream => {
 
-            userVideo.current.srcObject = stream;
+            userVideo.current.srcObject = localStream;
 
             socketRef.current.emit("join room", roomID);
 
             const peer = new Peer({
                 initiator: false,
                 trickle: false,
-                stream,
+                stream: localStream,
             });
 
             peer.on('signal', signal => {
-              socket.emit('returning signal', signal);
+              socketRef.current.emit('returning signal', signal);
             });
 
             peer.on('stream', stream => {
-              peers.push(stream);
-              setPeers(peers);
+              console.log('new stream');
+              streamsRef.current.push(stream);
+              setStreams(streamsRef.current);
             });
 
+            peer.on('connect', () => {
+              console.log('connected')
+            })
+
             socketRef.current.on("sending signal", signal => {
+              console.log('received signal from remote');
               peer.signal(signal);
             });
 
-            socketRef.current.on("user left", leavingStream => {
-              peers = peers.filter( stream => stream.id !== leavingStream.id );
-              setPeers(peers);
+            socketRef.current.on("user left", leavingStreamId => {
+              console.log('user left');
+              const updatedStreams = streamsRef.current.filter(s => s.id !== leavingStreamId);
+              streamsRef.current = updatedStreams;
+              setStreams(updatedStreams);
             });
 
             /**
@@ -235,7 +244,7 @@ const Room = (props) => {
       </Menu>
     );
 
-    console.log(peers);
+    console.log(streams);
 
     return (
       <div style={{height: "100vh"}}>
@@ -268,7 +277,7 @@ const Room = (props) => {
               </Grid>
               <Grid item xs={2} container direction={"column"} className={classes.centerAlign}>
                   <StyledVideo muted ref={userVideo} autoPlay playsInline />
-                  {peers.map((stream) => {
+                  {streams.map((stream) => {
                       return (
                         <Video key={stream.id} stream={stream} />
                       );

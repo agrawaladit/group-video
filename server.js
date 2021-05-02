@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socket(server);
 
-let roomIDLocal = "";
+// let roomIDLocal = "";
 
 // map of RoomID -> { id: socketId, peer: Peer }
 let users = new Map();
@@ -25,7 +25,16 @@ const NEW_CHAT_MESSAGE_EVENT = "newChatMessage";
 io.on('connection', socket => {
     socket.on("join room", roomID => {
 
-        roomIDLocal = roomID;
+        socket.join(roomID);
+
+        // Join a conversation
+        // const { roomId } = socket.handshake.query;
+        // socket.join(roomIDLocal);
+
+        // Listen for new messages
+        socket.on(NEW_CHAT_MESSAGE_EVENT, (data) => {
+            io.in(roomIDLocal).emit(NEW_CHAT_MESSAGE_EVENT, data);
+        });
 
         if (!users.has(roomID)) {
             users.set(roomID, []);
@@ -46,13 +55,15 @@ io.on('connection', socket => {
         peer.addTransceiver("audio", { direction: "sendrecv" });
         peer.addTransceiver("video", { direction: "sendrecv" });
 
-        let existingStreams = streams.get(roomID);
+        let existingStreams = streams.get(roomID).filter(obj => obj.id !== socket.id);
         for (let obj of existingStreams) {
           peer.addStream(obj.stream);
         }
 
         // A new audio/video stream has arrived from the remote peer (should only happen once per connection)
         peer.on('stream', stream => {
+
+          console.log(stream.id);
 
           // add this stream to the array of existing streams, any new players get initialized with this array of streams
           streams.get(roomID).push({ id: socket.id, stream: stream });
@@ -75,15 +86,6 @@ io.on('connection', socket => {
         socketToRoom.set(socket.id, roomID);
     });
 
-    // Join a conversation
-    // const { roomId } = socket.handshake.query;
-    socket.join(roomIDLocal);
-
-    // Listen for new messages
-    socket.on(NEW_CHAT_MESSAGE_EVENT, (data) => {
-        io.in(roomIDLocal).emit(NEW_CHAT_MESSAGE_EVENT, data);
-    });
-
     /**
     socket.on("sending signal", payload => {
         io.to(payload.userToSignal).emit('user joined', { signal: payload.signal, callerID: payload.callerID });
@@ -97,23 +99,32 @@ io.on('connection', socket => {
     // remove traces of this player
     socket.on('disconnect', () => {
 
+        console.log('socket disconnect');
+
         const roomID = socketToRoom.get(socket.id);
 
         if (roomID && users.has(roomID)) {
 
-            let peerConns = users.get(roomID);
-            let peerStreams = streams.get(roomID);
+            let currentUsers = users.get(roomID);
+            let currentStreams = streams.get(roomID);
 
-            peerConns = peerConns.filter(conn => conn.id !== socket.id);
-            peerStreams = peerStreams.filter(s => s.id !== socket.id);
+            let updatedUsers = currentUsers.filter(conn => conn.id !== socket.id);
+            let updatedStreams = currentStreams.filter(s => s.id !== socket.id);
 
-            let currStream = peerStreams.find(s => s.id === socket.id);
-            peerConns.forEach(conn => conn.peer.removeStream(currStream) );
+            let leavingUser = currentUsers.find(conn => conn.id === socket.id);
+            if (leavingUser) {
+              leavingUser.peer.destroy();
+            }
 
-            users.set(roomID, peerConns);
-            streams.set(roomID, peerStreams);
+            let leavingStream = currentStreams.find(s => s.id === socket.id);
+            if (leavingStream) {
+              console.log(leavingStream.stream.id);
+              updatedUsers.forEach(user => user.peer.removeStream(leavingStream.stream) );
+              io.to(roomID).emit('user left', leavingStream.stream.id);
+            }
 
-            io.to(roomID).emit('user left', currStream);
+            users.set(roomID, updatedUsers);
+            streams.set(roomID, updatedStreams);
         }
     });
 });
