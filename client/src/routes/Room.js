@@ -93,6 +93,10 @@ const Room = (props) => {
                 stream,
             });
 
+            peer.on('signal', signal => {
+              socket.emit('returning signal', signal);
+            });
+
             peer.on('stream', stream => {
               peers.push(stream);
               setPeers(peers);
