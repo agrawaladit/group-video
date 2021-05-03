@@ -33,7 +33,7 @@ io.on('connection', socket => {
 
         // Listen for new messages
         socket.on(NEW_CHAT_MESSAGE_EVENT, (data) => {
-            io.in(roomIDLocal).emit(NEW_CHAT_MESSAGE_EVENT, data);
+            io.in(roomID).emit(NEW_CHAT_MESSAGE_EVENT, data);
         });
 
         if (!users.has(roomID)) {
@@ -55,7 +55,7 @@ io.on('connection', socket => {
         peer.addTransceiver("audio", { direction: "sendrecv" });
         peer.addTransceiver("video", { direction: "sendrecv" });
 
-        let existingStreams = streams.get(roomID).filter(obj => obj.id !== socket.id);
+        let existingStreams = streams.get(roomID);
         for (let obj of existingStreams) {
           peer.addStream(obj.stream);
         }
@@ -111,6 +111,11 @@ io.on('connection', socket => {
             let updatedUsers = currentUsers.filter(conn => conn.id !== socket.id);
             let updatedStreams = currentStreams.filter(s => s.id !== socket.id);
 
+            let leavingUser = currentUsers.find(conn => conn.id === socket.id);
+            if (leavingUser) {
+              leavingUser.peer.destroy();
+            }
+
             let leavingStream = currentStreams.find(s => s.id === socket.id);
             if (leavingStream) {
               console.log(leavingStream.stream.id);
@@ -120,6 +125,7 @@ io.on('connection', socket => {
 
             users.set(roomID, updatedUsers);
             streams.set(roomID, updatedStreams);
+            socketToRoom.delete(socket.id);
         }
     });
 });

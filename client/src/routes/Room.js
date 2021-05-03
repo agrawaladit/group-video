@@ -74,17 +74,15 @@ const Room = (props) => {
     const peerRef = useRef(null);
     const socketRef = useRef();
     const userVideo = useRef();
-    const streamsRef = useRef([]);
     const { id } = useParams();
     const roomID = id;
 
     useEffect(() => {
         socketRef.current = io.connect("/");
 
-        const videoConstraints = { "width": 600, "height": 450 };
-        let mediaPromise = navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true }).catch(err => {
-          return null;
-        });
+        const videoConstraints = { "width": 340, "height": 255 };
+        let mediaPromise = navigator.mediaDevices.getUserMedia({ audio: true });
+        // let mediaPromise = navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: true });
         mediaPromise.then(localStream => {
 
             if (localStream) {
@@ -105,8 +103,7 @@ const Room = (props) => {
 
             peer.on('stream', stream => {
               console.log('new stream');
-              streamsRef.current.push(stream);
-              setStreams(streamsRef.current);
+              setStreams(streams => [...streams, stream]);
             });
 
             peer.on('connect', () => {
@@ -120,9 +117,7 @@ const Room = (props) => {
 
             socketRef.current.on("user left", leavingStreamId => {
               console.log('user left');
-              const updatedStreams = streamsRef.current.filter(s => s.id !== leavingStreamId);
-              streamsRef.current = updatedStreams;
-              setStreams(updatedStreams);
+              setStreams(streams => { return streams.filter(s => s.id !== leavingStreamId); });
             });
 
             peerRef.current = peer;
