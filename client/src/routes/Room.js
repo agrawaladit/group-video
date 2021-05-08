@@ -35,8 +35,8 @@ const Video = (props) => {
 
 
 const videoConstraints = {
-    "width": 640,
-    "height": 480
+    "width": 280,
+    "height": 180
 };
 
 const StyledVideo = styled.video`
